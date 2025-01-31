@@ -1,0 +1,20 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "shell",
+			"label": "Build CUDA C++",
+			"command": "/home/jonah/projects/cuda-experiments/ornl/cudamake.sh",
+			"args": [
+				"${file}"
+			],
+			"problemMatcher": [
+				"nvcc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		}
+	]
+}
