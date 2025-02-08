@@ -4,7 +4,7 @@
 		{
 			"type": "shell",
 			"label": "Build CUDA C++",
-			"command": "/home/jonah/projects/cuda-experiments/ornl/cudamake.sh",
+			"command": "/home/jonah/projects/cuda-unix/examples/cudamake.sh",
 			"args": [
 				"${file}"
 			],
