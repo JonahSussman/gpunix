@@ -1,3 +1,9 @@
+examples/linking/keep/
+src/.keep
+tinyemu-2019-12-21/
+buildroot-riscv-2018-10-20/
+diskimage-linux-riscv-2018-09-23/
+
 # --- c++ ---
 
 # Prerequisites

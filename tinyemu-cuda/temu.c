@@ -32,12 +32,12 @@
 #include <unistd.h>
 #include <time.h>
 #include <getopt.h>
-#ifndef _WIN32
+
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
 #include <linux/if_tun.h>
-#endif
+
 #include <sys/stat.h>
 #include <signal.h>
 
@@ -52,8 +52,6 @@
 #ifdef CONFIG_SLIRP
 #include "slirp/libslirp.h"
 #endif
-
-#ifndef _WIN32
 
 typedef struct {
     int stdin_fd;
@@ -204,8 +202,6 @@ CharacterDevice *console_init(BOOL allow_ctrlc)
     return dev;
 }
 
-#endif /* !_WIN32 */
-
 typedef enum {
     BF_MODE_RO,
     BF_MODE_RW,
@@ -346,8 +342,6 @@ static BlockDevice *block_device_init(const char *filename,
     return bs;
 }
 
-#ifndef _WIN32
-
 typedef struct {
     int fd;
     BOOL select_filled;
@@ -450,8 +444,6 @@ static EthernetDevice *tun_open(const char *ifname)
     return net;
 }
 
-#endif /* !_WIN32 */
-
 #ifdef CONFIG_SLIRP
 
 /*******************************************************/
@@ -539,9 +531,7 @@ void virt_machine_run(VirtMachine *m)
     fd_set rfds, wfds, efds;
     int fd_max, ret, delay;
     struct timeval tv;
-#ifndef _WIN32
     int stdin_fd;
-#endif
     
     delay = virt_machine_get_sleep_duration(m, MAX_SLEEP_TIME);
     
@@ -550,7 +540,6 @@ void virt_machine_run(VirtMachine *m)
     FD_ZERO(&wfds);
     FD_ZERO(&efds);
     fd_max = -1;
-#ifndef _WIN32
     if (m->console_dev && virtio_console_can_write_data(m->console_dev)) {
         STDIODevice *s = m->console->opaque;
         stdin_fd = s->stdin_fd;
@@ -564,7 +553,6 @@ void virt_machine_run(VirtMachine *m)
             s->resize_pending = FALSE;
         }
     }
-#endif
     if (m->net) {
         m->net->select_fill(m->net, &fd_max, &rfds, &wfds, &efds, &delay);
     }
@@ -578,7 +566,6 @@ void virt_machine_run(VirtMachine *m)
         m->net->select_poll(m->net, &rfds, &wfds, &efds, ret);
     }
     if (ret > 0) {
-#ifndef _WIN32
         if (m->console_dev && FD_ISSET(stdin_fd, &rfds)) {
             uint8_t buf[128];
             int ret, len;
@@ -589,7 +576,6 @@ void virt_machine_run(VirtMachine *m)
                 virtio_console_write_data(m->console_dev, buf, ret);
             }
         }
-#endif
     }
 
 #ifdef CONFIG_SDL
@@ -763,10 +749,6 @@ int main(int argc, char **argv)
         } else
 #endif
         {
-#ifdef _WIN32
-            fprintf(stderr, "Filesystem access not supported yet\n");
-            exit(1);
-#else
             char *fname;
             fname = get_file_path(p->cfg_filename, path);
             fs = fs_disk_init(fname);
@@ -775,7 +757,6 @@ int main(int argc, char **argv)
                 exit(1);
             }
             free(fname);
-#endif
         }
         p->tab_fs[i].fs_dev = fs;
     }
@@ -788,14 +769,11 @@ int main(int argc, char **argv)
                 exit(1);
         } else
 #endif
-#ifndef _WIN32
         if (!strcmp(p->tab_eth[i].driver, "tap")) {
             p->tab_eth[i].net = tun_open(p->tab_eth[i].ifname);
             if (!p->tab_eth[i].net)
                 exit(1);
-        } else
-#endif
-        {
+        } else {
             fprintf(stderr, "Unsupported network driver '%s'\n",
                     p->tab_eth[i].driver);
             exit(1);
@@ -808,12 +786,7 @@ int main(int argc, char **argv)
     } else
 #endif
     {
-#ifdef _WIN32
-        fprintf(stderr, "Console not supported yet\n");
-        exit(1);
-#else
         p->console = console_init(allow_ctrlc);
-#endif
     }
     p->rtc_real_time = TRUE;
 
