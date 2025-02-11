@@ -577,10 +577,6 @@ void virt_machine_run(VirtMachine *m)
             }
         }
     }
-
-#ifdef CONFIG_SDL
-    sdl_refresh(m);
-#endif
     
     virt_machine_interp(m, MAX_EXEC_CYCLE);
 }
@@ -780,14 +776,7 @@ int main(int argc, char **argv)
         }
     }
     
-#ifdef CONFIG_SDL
-    if (p->display_device) {
-        sdl_init(p->width, p->height);
-    } else
-#endif
-    {
-        p->console = console_init(allow_ctrlc);
-    }
+    p->console = console_init(allow_ctrlc);
     p->rtc_real_time = TRUE;
 
     s = virt_machine_init(p);

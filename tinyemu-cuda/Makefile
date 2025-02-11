@@ -26,7 +26,7 @@
 # (openssl) must be installed.
 CONFIG_FS_NET=y
 # SDL support (optional)
-CONFIG_SDL=y
+# CONFIG_SDL=y
 # if set, compile the 128 bit emulator. Note: the 128 bit target does
 # not compile if gcc does not support the int128 type (32 bit hosts).
 CONFIG_INT128=y
@@ -35,7 +35,7 @@ CONFIG_X86EMU=y
 # win32 build (not usable yet)
 #CONFIG_WIN32=y
 # user space network redirector
-CONFIG_SLIRP=y
+# CONFIG_SLIRP=y
 
 ifdef CONFIG_WIN32
 CROSS_PREFIX=i686-w64-mingw32-

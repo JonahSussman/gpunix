@@ -170,10 +170,6 @@ static inline void vm_send_key_event(VirtMachine *s1, BOOL is_down, uint16_t key
     s1->vmc->vm_send_key_event(s1, is_down, key_code);
 }
 
-/* gui */
-void sdl_refresh(VirtMachine *m);
-void sdl_init(int width, int height);
-
 /* simplefb.c */
 typedef struct SimpleFBState SimpleFBState;
 SimpleFBState *simplefb_init(PhysMemoryMap *map, uint64_t phys_addr,
