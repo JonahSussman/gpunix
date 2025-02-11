@@ -46,43 +46,43 @@ struct FBDevice {
 
 #define VM_CONFIG_VERSION 1
 
-typedef enum {
+enum VMFileTypeEnum {
     VM_FILE_BIOS,
     VM_FILE_VGA_BIOS,
     VM_FILE_KERNEL,
     VM_FILE_INITRD,
 
     VM_FILE_COUNT,
-} VMFileTypeEnum;
+};
 
-typedef struct {
+struct VMFileEntry {
     char *filename;
     uint8_t *buf;
     int len;
-} VMFileEntry;
+};
 
-typedef struct {
+struct VMDriveEntry {
     char *device;
     char *filename;
     BlockDevice *block_dev;
-} VMDriveEntry;
+};
 
-typedef struct {
+struct VMFSEntry {
     char *device;
     char *tag; /* 9p mount tag */
     char *filename;
     FSDevice *fs_dev;
-} VMFSEntry;
+};
 
-typedef struct {
+struct VMEthEntry {
     char *driver;
     char *ifname;
     EthernetDevice *net;
-} VMEthEntry;
+};
 
 typedef struct VirtMachineClass VirtMachineClass;
 
-typedef struct {
+struct VirtMachineParams {
     char *cfg_filename;
     const VirtMachineClass *vmc;
     char *machine_name;
@@ -105,7 +105,12 @@ typedef struct {
     
     /* kernel, bios and other auxiliary files */
     VMFileEntry files[VM_FILE_COUNT];
-} VirtMachineParams;
+
+    // // NOTE(JonahSussman): Replaces `virt_machine_set_defaults`
+    // VirtMachineParams() {
+    //     memset(this, 0, sizeof(VirtMachineParams));
+    // }
+};
 
 typedef struct VirtMachine {
     const VirtMachineClass *vmc;
@@ -165,7 +170,8 @@ static inline void vm_send_mouse_event(VirtMachine *s1, int dx, int dy, int dz,
 {
     s1->vmc->vm_send_mouse_event(s1, dx, dy, dz, buttons);
 }
-static inline void vm_send_key_event(VirtMachine *s1, bool is_down, uint16_t key_code)
+static inline void vm_send_key_event(
+    VirtMachine *s1, bool is_down, uint16_t key_code)
 {
     s1->vmc->vm_send_key_event(s1, is_down, key_code);
 }

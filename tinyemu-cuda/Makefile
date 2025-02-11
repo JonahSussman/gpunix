@@ -24,31 +24,29 @@
 
 # if set, network filesystem is enabled. libcurl and libcrypto
 # (openssl) must be installed.
-CONFIG_FS_NET=y
+# CONFIG_FS_NET=y
 # SDL support (optional)
 # CONFIG_SDL=y
 # if set, compile the 128 bit emulator. Note: the 128 bit target does
 # not compile if gcc does not support the int128 type (32 bit hosts).
 CONFIG_INT128=y
 # build x86 emulator
-CONFIG_X86EMU=y
+# CONFIG_X86EMU=y
 # win32 build (not usable yet)
 #CONFIG_WIN32=y
 # user space network redirector
 # CONFIG_SLIRP=y
 
-ifdef CONFIG_WIN32
-CROSS_PREFIX=i686-w64-mingw32-
-EXE=.exe
-else
 CROSS_PREFIX=
 EXE=
-endif
-CC=$(CROSS_PREFIX)gcc
+
+# CC=$(CROSS_PREFIX)gcc
+CC=nvcc
 STRIP=$(CROSS_PREFIX)strip
-CFLAGS=-O2 -Wall -g -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -MMD
+CFLAGS=-O2 -g -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -MMD -arch=sm_61 -Wno-deprecated-gpu-targets
+CFLAGS+=-diag-suppress 2464
 CFLAGS+=-D_GNU_SOURCE -DCONFIG_VERSION=\"$(shell cat VERSION)\"
-LDFLAGS=
+LDFLAGS=-Wno-deprecated-gpu-targets
 
 bindir=/usr/local/bin
 INSTALL=install
@@ -106,20 +104,20 @@ endif
 temu$(EXE): $(EMU_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(EMU_LIBS)
 
-riscv_cpu32.o: riscv_cpu.c
+riscv_cpu32.o: riscv_cpu.cu
 	$(CC) $(CFLAGS) -DMAX_XLEN=32 -c -o $@ $<
 
-riscv_cpu64.o: riscv_cpu.c
+riscv_cpu64.o: riscv_cpu.cu
 	$(CC) $(CFLAGS) -DMAX_XLEN=64 -c -o $@ $<
 
-riscv_cpu128.o: riscv_cpu.c
+riscv_cpu128.o: riscv_cpu.cu
 	$(CC) $(CFLAGS) -DMAX_XLEN=128 -c -o $@ $<
 
 build_filelist: build_filelist.o fs_utils.o cutils.o
 	$(CC) $(LDFLAGS) -o $@ $^ -lm
 
 splitimg: splitimg.o
-	$(CC) $(LDFLAGS) -o $@ $^
+	$(CC) $(LDFLAGS)  -o $@ $^
 
 install: $(PROGS)
 	$(STRIP) $(PROGS)
@@ -127,6 +125,9 @@ install: $(PROGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+%.o: %.cu
+	$(CC) $(CFLAGS) --device-c -o $@ $<
 
 clean:
 	rm -f *.o *.d *~ $(PROGS) slirp/*.o slirp/*.d slirp/*~
