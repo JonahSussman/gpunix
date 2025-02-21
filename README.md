@@ -1,32 +1,44 @@
 # gpunix
 
-Welcome to gpunix, an fully-fledged Unix operating system that runs on the GPU. (Yes, you read that correctly)
+Welcome to gpunix, a fully-fledged Linux operating system that runs on the GPU. (Yes, you read that correctly)
+
+As the great philosopher Richards Shaderman once said: 
 
 > I'd just like to interject for a moment. What you're referring to as Unix, is in fact, GPU/Unix, or as I've recently taken to calling it, GPU plus Unix. Unix is not an operating system unto itself, but rather another component of a fully functioning GPU system made useful by the GPU kernels, memory management, and parallel processing capabilities comprising a full computational framework.
 
 ## Project Overview
 
-gpunix is an esoteric project that aims to port the beloved Unix operating system (xv6) to run exclusively on CUDA-enabled devices. By harnessing the parallel processing capabilities of CUDA, we're taking Unix to a whole new level! Tested on a GTX 1060, CUDA compute capability 6.1.
+> ![First boot of gpunix](docs/first-boot.png)
+> The first boot of `gpunix` ever!
 
-> Many computer users run a modified version of the Unix system every day, without realizing it. Through a peculiar turn of events, the version of Unix which is widely used today is often called Unix, and many of its users are not aware that it is basically the GPU system, developed with the integration of GPU computing.
+`gpunix` originally started an esoteric project to port the beloved Unix operating system (xv6) to run exclusively on CUDA-enabled devices. Eventually, the thing got out of hand and I ended up running a fully-fledged Linux distro instead. Whoops!
+
+The project uses [`mini-rv32ima`](https://github.com/cnlohr/mini-rv32ima) to emulate a RISC-V CPU on the GPU (strange loop abounds? [Nvidia already uses RISC-V for their new GPUs](https://riscv.org/wp-content/uploads/2024/12/Tue1100_Nvidia_RISCV_Story_V2.pdf)) The CPU is then used to run a Linux kernel, which in turn runs a full userland.
+
+Tested on a GTX 1060, CUDA compute capability 6.1 (`sm_61`).
 
 ## Features
 
-- Absolute exploitation of CUDA's supposed turing completeness
-- Lightning-fast parallel processing for all your Unix tasks.
-- Embrace the power of CUDA with familiar Unix commands.
-- Experience the joy of debugging Unix on a GPU.
-
-> There really is a Unix, and these people are using it, but it is just a part of the system they use. Unix is the software layer: the suite of tools and libraries that provide the interface and environment for running applications. This layer is essential for managing hardware resources, but it can only fully leverage the computational power of modern hardware when combined with GPU processing. Unix is normally used in combination with the GPU computational framework: the whole system is basically Unix with GPU added, or GPU/Unix. All the so-called Unix-based distributions are really distributions of GPU/Unix!
+- Absolute exploitation of CUDA's "supposed" turing completeness.
+- Embrace the power of CUDA with familiar *nix commands.
+- Experience the joy of debugging Linux on a GPU.
+- ???
+- Profit!
 
 ## Getting Started
 
-To get started with gpunix, follow these steps:
+To get started with `gpunix`, follow these steps:
 
-1. Clone the repository: `git clone https://github.com/your-username/cuda-unix.git`
-2. Install the necessary CUDA toolkit and drivers.
-3. Build the gpunix kernel: `make cuda-kernel`
-4. Launch gpunix: `./cuda-unix`
+1. Clone the repository: `git clone https://github.com/your-username/gpunix.git`
+2. Install the necessary CUDA runtime and drivers. [Here](https://rpmfusion.org/Howto/CUDA) is a good guide for Fedora.
+3. Build: `make cuda-rv32ima`
+4. Launch: `./bin/cuda-rv32ima -f assets/DownloadedImage`
+5. Enjoy hearing your GPU scream!
+
+## TODO
+
+- [ ] Fix up keyboard input
+- [ ] Write up a blog post about the project
 
 ## License
 

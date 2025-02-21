@@ -10,6 +10,16 @@
       "request": "launch",
       "program": "${fileDirname}/${fileBasenameNoExtension}.out",
       "preLaunchTask": "Build CUDA C++"
+    },
+    {
+      "name": "RISCV Emulator",
+      "type": "cuda-gdb",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/bin/cuda-rv32ima",
+      "args": [
+        "-f ${workspaceFolder}/src/DownloadedImage",
+      ],
+      "preLaunchTask": "Build RISCV Emulator"
     }
   ]
 }

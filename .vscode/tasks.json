@@ -15,6 +15,23 @@
 				"kind": "build",
 				"isDefault": true
 			}
+		},
+		{
+			"type": "shell",
+			"label": "Build RISCV Emulator",
+			"command": "/usr/bin/make",
+			"args": [
+				"-C",
+				"${workspaceFolder}/src",
+				"cuda-rv32ima"
+			],
+			"problemMatcher": [
+				"nvcc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
 		}
 	]
 }
