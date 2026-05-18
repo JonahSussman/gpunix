@@ -28,8 +28,13 @@ __device__ void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t v
 __device__ int32_t HandleOtherCSRRead( uint8_t * image, uint16_t csrno );
 static void MiniSleep();
 
-int* kb_state;
-__device__ int* d_kb_state;
+struct KeyboardState {
+	int hit;
+	int byte;
+};
+
+KeyboardState* kb_state;
+__device__ KeyboardState* d_kb_state;
 __device__ int IsKBHit();
 static int IsKBHitHost();
 __device__ int ReadKBByte();
@@ -69,10 +74,10 @@ int main( int argc, char ** argv )
 {	
 	cudaMemcpyToSymbol( ram_amt, &ram_amt_h, sizeof(ram_amt_h) );
 	cudaMemcpyToSymbol( fail_on_all_faults, &fail_on_all_faults_h, sizeof(fail_on_all_faults_h) );
-	cudaMallocManaged((void**)&kb_state, 2 * sizeof(int));
-	kb_state[0] = 0;
-	kb_state[1] = 0;
-	cudaMemcpyToSymbol( d_kb_state, &kb_state, sizeof(int*) );
+	cudaMallocManaged((void**)&kb_state, sizeof(KeyboardState));
+	kb_state->hit = 0;
+	kb_state->byte = 0;
+	cudaMemcpyToSymbol( d_kb_state, &kb_state, sizeof(KeyboardState*) );
 
 	int i;
 	long long instct = -1;
@@ -245,12 +250,12 @@ restart:
 			elapsedUs = GetTimeMicroseconds()/time_divisor - lastTime;
 		lastTime += elapsedUs;
 
-		if( !kb_state[0] )
+		if( !kb_state->hit )
 		{
-			kb_state[0] = IsKBHitHost();
-			if( kb_state[0] )
+			kb_state->hit = IsKBHitHost();
+			if( kb_state->hit )
 			{
-				kb_state[1] = ReadKBByteHost();
+				kb_state->byte = ReadKBByteHost();
 			}
 		}
 
@@ -409,8 +414,8 @@ static uint64_t GetTimeMicroseconds()
 static int is_eofd;
 
 __device__ int ReadKBByte() {
-	d_kb_state[0] = 0;
-	return d_kb_state[1];
+	d_kb_state->hit = 0;
+	return d_kb_state->byte;
 }
 
 static int ReadKBByteHost()
@@ -426,7 +431,7 @@ static int ReadKBByteHost()
 }
 
 __device__ int IsKBHit() {
-	return d_kb_state[0];
+	return d_kb_state->hit;
 }
 
 static int IsKBHitHost()
