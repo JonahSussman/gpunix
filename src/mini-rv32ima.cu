@@ -69,10 +69,21 @@ static int ReadKBByteHost();
 
 #include "mini-rv32ima.h"
 
+struct EmulatorArgs {
+  long long instct;
+  int time_divisor;
+  int fixed_update;
+  int do_sleep;
+  int single_step;
+  const char *image_file_name;
+  const char *dtb_file_name;
+  const char *kernel_command_line;
+};
+
+static int ParseArgs(int argc, char **argv, EmulatorArgs *args);
+
 uint8_t *ram_image = 0;
 struct MiniRV32IMAState *core;
-const char *kernel_command_line = 0;
-
 static void DumpState(struct MiniRV32IMAState *core, uint8_t *ram_image);
 
 __global__ void MiniRV32IMAStepKernel(
@@ -94,95 +105,20 @@ int main(int argc, char **argv) {
   kb_state->byte = 0;
   cudaMemcpyToSymbol(d_kb_state, &kb_state, sizeof(KeyboardState *));
 
-  int i;
-  long long instct = -1;
-  int show_help = 0;
-  int time_divisor = 1;
-  int fixed_update = 0;
-  int do_sleep = 1;
-  int single_step = 0;
-  int dtb_ptr = 0;
-  const char *image_file_name = 0;
-  const char *dtb_file_name = 0;
-
-  for (i = 1; i < argc; i++) {
-    const char *param = argv[i];
-    int param_continue = 0; // Can combine parameters, like -lpt x
-    do {
-      if (param[0] == '-' || param_continue) {
-        switch (param[1]) {
-        case 'm':
-          if (++i < argc) {
-            ram_amt_h = SimpleReadNumberInt(argv[i], ram_amt_h);
-            cudaMemcpyToSymbol(ram_amt, &ram_amt_h, sizeof(ram_amt_h));
-            break;
-          }
-        case 'c':
-          if (++i < argc)
-            instct = SimpleReadNumberInt(argv[i], -1);
-          break;
-        case 'k':
-          if (++i < argc)
-            kernel_command_line = argv[i];
-          break;
-        case 'f':
-          image_file_name = (++i < argc) ? argv[i] : 0;
-          break;
-        case 'b':
-          dtb_file_name = (++i < argc) ? argv[i] : 0;
-          break;
-        case 'l':
-          param_continue = 1;
-          fixed_update = 1;
-          break;
-        case 'p':
-          param_continue = 1;
-          do_sleep = 0;
-          break;
-        case 's':
-          param_continue = 1;
-          single_step = 1;
-          break;
-        case 'd': {
-          param_continue = 1;
-          fail_on_all_faults_h = 1;
-          cudaMemcpyToSymbol(
-              fail_on_all_faults, &fail_on_all_faults_h, sizeof(fail_on_all_faults_h)
-          );
-          break;
-        }
-
-        case 't':
-          if (++i < argc)
-            time_divisor = SimpleReadNumberInt(argv[i], 1);
-          break;
-        default:
-          if (param_continue)
-            param_continue = 0;
-          else
-            show_help = 1;
-          break;
-        }
-      } else {
-        show_help = 1;
-        break;
-      }
-      param++;
-    } while (param_continue);
-  }
-
-  if (show_help || image_file_name == 0 || time_divisor <= 0) {
-    fprintf(
-        stderr,
-        "./mini-rv32imaf [parameters]\n\t-m [ram amount]\n\t-f [running "
-        "image]\n\t-k [kernel command line]\n\t-b [dtb file, or "
-        "'disable']\n\t-c "
-        "instruction count\n\t-s single step with full processor state\n\t-t "
-        "time divion base\n\t-l lock time base to instruction count\n\t-p "
-        "disable sleep when wfi\n\t-d fail out immediately on all faults\n"
-    );
+  EmulatorArgs args;
+  if (ParseArgs(argc, argv, &args)) {
     return 1;
   }
+
+  long long instct = args.instct;
+  int time_divisor = args.time_divisor;
+  int fixed_update = args.fixed_update;
+  int do_sleep = args.do_sleep;
+  int single_step = args.single_step;
+  const char *image_file_name = args.image_file_name;
+  const char *dtb_file_name = args.dtb_file_name;
+  const char *kernel_command_line = args.kernel_command_line;
+  int dtb_ptr = 0;
 
   cudaMallocManaged((void **)&ram_image, ram_amt_h);
   if (!ram_image) {
@@ -317,6 +253,103 @@ restart: {
   }
 
   DumpState(core, ram_image);
+}
+
+static int ParseArgs(int argc, char **argv, EmulatorArgs *args) {
+  args->instct = -1;
+  args->time_divisor = 1;
+  args->fixed_update = 0;
+  args->do_sleep = 1;
+  args->single_step = 0;
+  args->image_file_name = 0;
+  args->dtb_file_name = 0;
+  args->kernel_command_line = 0;
+
+  int show_help = 0;
+
+  for (int i = 1; i < argc; i++) {
+    const char *param = argv[i];
+    int param_continue = 0;
+    do {
+      if (param[0] == '-' || param_continue) {
+        switch (param[1]) {
+        case 'm':
+          if (++i < argc) {
+            ram_amt_h = SimpleReadNumberInt(argv[i], ram_amt_h);
+            cudaMemcpyToSymbol(ram_amt, &ram_amt_h, sizeof(ram_amt_h));
+            break;
+          }
+        case 'c':
+          if (++i < argc)
+            args->instct = SimpleReadNumberInt(argv[i], -1);
+          break;
+        case 'k':
+          if (++i < argc)
+            args->kernel_command_line = argv[i];
+          break;
+        case 'f':
+          args->image_file_name = (++i < argc) ? argv[i] : 0;
+          break;
+        case 'b':
+          args->dtb_file_name = (++i < argc) ? argv[i] : 0;
+          break;
+        case 'l':
+          param_continue = 1;
+          args->fixed_update = 1;
+          break;
+        case 'p':
+          param_continue = 1;
+          args->do_sleep = 0;
+          break;
+        case 's':
+          param_continue = 1;
+          args->single_step = 1;
+          break;
+        case 'd': {
+          param_continue = 1;
+          fail_on_all_faults_h = 1;
+          cudaMemcpyToSymbol(
+              fail_on_all_faults, &fail_on_all_faults_h, sizeof(fail_on_all_faults_h)
+          );
+          break;
+        }
+        case 't':
+          if (++i < argc)
+            args->time_divisor = SimpleReadNumberInt(argv[i], 1);
+          break;
+        default:
+          if (param_continue)
+            param_continue = 0;
+          else
+            show_help = 1;
+          break;
+        }
+      } else {
+        show_help = 1;
+        break;
+      }
+      param++;
+    } while (param_continue);
+  }
+
+  if (show_help || args->image_file_name == 0 || args->time_divisor <= 0) {
+    fprintf(stderr,
+        "./mini-rv32imaf [parameters]\n"
+        "\t-m [ram amount]\n"
+        "\t-f [running image]\n"
+        "\t-k [kernel command line]\n"
+        "\t-b [dtb file, or 'disable']\n"
+        "\t-c instruction count\n"
+        "\t-s single step with full processor state\n"
+        "\t-t time division base\n"
+        "\t-l lock time base to instruction count\n"
+        "\t-p disable sleep when wfi\n"
+        "\t-d fail out immediately on all faults\n"
+    );
+    return 1;
+  }
+
+  return 0;
 }
 
 //////////////////////////////////////////////////////////////////////////
