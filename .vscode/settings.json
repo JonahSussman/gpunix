@@ -38,6 +38,7 @@
     "tuple": "cpp",
     "type_traits": "cpp"
   },
+  "editor.rulers": [100],
   "cSpell.words": [
     "cuda",
     "getopt",
