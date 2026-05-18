@@ -466,7 +466,6 @@ __device__ uint32_t HandleControlStore( MiniRV32IMAState* core, uint32_t addy, u
 	if( addy == 0x10000000 ) //UART 8250 / 16550 Data Buffer
 	{
 		printf( "%c", val );
-		// fflush( stdout );
 	}
 	else if( addy == 0x11004004 ) //CLNT
 		core->timermatchh = val;
