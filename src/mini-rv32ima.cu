@@ -75,6 +75,7 @@ struct EmulatorArgs {
   int fixed_update;
   int do_sleep;
   int single_step;
+  int cycles_per_step;
   const char *image_file_name;
   const char *dtb_file_name;
   const char *kernel_command_line;
@@ -110,14 +111,6 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  long long instct = args.instct;
-  int time_divisor = args.time_divisor;
-  int fixed_update = args.fixed_update;
-  int do_sleep = args.do_sleep;
-  int single_step = args.single_step;
-  const char *image_file_name = args.image_file_name;
-  const char *dtb_file_name = args.dtb_file_name;
-  const char *kernel_command_line = args.kernel_command_line;
   int dtb_ptr = 0;
 
   cudaMallocManaged((void **)&ram_image, ram_amt_h);
@@ -127,9 +120,9 @@ int main(int argc, char **argv) {
   }
 
 restart: {
-  FILE *f = fopen(image_file_name, "rb");
+  FILE *f = fopen(args.image_file_name, "rb");
   if (!f || ferror(f)) {
-    fprintf(stderr, "Error: \"%s\" not found\n", image_file_name);
+    fprintf(stderr, "Error: \"%s\" not found\n", args.image_file_name);
     return -5;
   }
   fseek(f, 0, SEEK_END);
@@ -147,13 +140,13 @@ restart: {
   }
   fclose(f);
 
-  if (dtb_file_name) {
-    if (strcmp(dtb_file_name, "disable") == 0) {
+  if (args.dtb_file_name) {
+    if (strcmp(args.dtb_file_name, "disable") == 0) {
       // No DTB reading.
     } else {
-      f = fopen(dtb_file_name, "rb");
+      f = fopen(args.dtb_file_name, "rb");
       if (!f || ferror(f)) {
-        fprintf(stderr, "Error: \"%s\" not found\n", dtb_file_name);
+        fprintf(stderr, "Error: \"%s\" not found\n", args.dtb_file_name);
         return -5;
       }
       fseek(f, 0, SEEK_END);
@@ -161,7 +154,7 @@ restart: {
       fseek(f, 0, SEEK_SET);
       dtb_ptr = ram_amt_h - dtblen - sizeof(struct MiniRV32IMAState);
       if (fread(ram_image + dtb_ptr, dtblen, 1, f) != 1) {
-        fprintf(stderr, "Error: Could not open dtb \"%s\"\n", dtb_file_name);
+        fprintf(stderr, "Error: Could not open dtb \"%s\"\n", args.dtb_file_name);
         return -9;
       }
       fclose(f);
@@ -170,8 +163,8 @@ restart: {
     // Load a default dtb.
     dtb_ptr = ram_amt_h - sizeof(default64mbdtb) - sizeof(struct MiniRV32IMAState);
     memcpy(ram_image + dtb_ptr, default64mbdtb, sizeof(default64mbdtb));
-    if (kernel_command_line) {
-      strncpy((char *)(ram_image + dtb_ptr + 0xc0), kernel_command_line, 54);
+    if (args.kernel_command_line) {
+      strncpy((char *)(ram_image + dtb_ptr + 0xc0), args.kernel_command_line, 54);
     }
   }
 }
@@ -186,7 +179,7 @@ restart: {
                            : 0; // dtb_pa (Must be valid pointer) (Should be pointer to dtb)
   core->extraflags |= 3;        // Machine-mode.
 
-  if (dtb_file_name == 0) {
+  if (args.dtb_file_name == 0) {
     // Update system ram size in DTB (but if and only if we're using the default
     // DTB) Warning - this will need to be updated if the skeleton DTB is ever
     // modified.
@@ -200,17 +193,18 @@ restart: {
 
   // Image is loaded.
   uint64_t rt;
-  uint64_t lastTime = (fixed_update) ? 0 : (GetTimeMicroseconds() / time_divisor);
-  int instrs_per_flip = single_step ? 1 : 1024;
+  uint64_t lastTime = (args.fixed_update) ? 0 : (GetTimeMicroseconds() / args.time_divisor);
+  int cycles_per_step = args.single_step ? 1 : args.cycles_per_step;
   uint32_t *ret;
   cudaMallocManaged((void **)&ret, sizeof(uint32_t));
-  for (rt = 0; rt < instct + 1 || instct < 0; rt += instrs_per_flip) {
+  int fatal_fault = 0;
+  for (rt = 0; !fatal_fault && (rt < args.instct + 1 || args.instct < 0); rt += cycles_per_step) {
     uint64_t *this_ccount = ((uint64_t *)&core->cyclel);
     uint32_t elapsedUs = 0;
-    if (fixed_update)
-      elapsedUs = *this_ccount / time_divisor - lastTime;
+    if (args.fixed_update)
+      elapsedUs = *this_ccount / args.time_divisor - lastTime;
     else
-      elapsedUs = GetTimeMicroseconds() / time_divisor - lastTime;
+      elapsedUs = GetTimeMicroseconds() / args.time_divisor - lastTime;
     lastTime += elapsedUs;
 
     if (!kb_state->hit) {
@@ -226,20 +220,20 @@ restart: {
         ram_image,
         0,
         elapsedUs,
-        instrs_per_flip
-    ); // Execute up to 1024 cycles before breaking out.
+        cycles_per_step
+    ); // Execute up to cycles_per_step cycles before breaking out.
     cudaDeviceSynchronize();
 
     switch (*ret) {
     case 0:
       break;
     case 1:
-      if (do_sleep)
+      if (args.do_sleep)
         MiniSleep();
-      *this_ccount += instrs_per_flip;
+      *this_ccount += cycles_per_step;
       break;
     case 3:
-      instct = 0;
+      fatal_fault = 1;
       break;
     case 0x7777:
       goto restart; // syscon code for restart
@@ -261,6 +255,7 @@ static int ParseArgs(int argc, char **argv, EmulatorArgs *args) {
   args->fixed_update = 0;
   args->do_sleep = 1;
   args->single_step = 0;
+  args->cycles_per_step = 1024;
   args->image_file_name = 0;
   args->dtb_file_name = 0;
   args->kernel_command_line = 0;
@@ -313,6 +308,10 @@ static int ParseArgs(int argc, char **argv, EmulatorArgs *args) {
           );
           break;
         }
+        case 'i':
+          if (++i < argc)
+            args->cycles_per_step = SimpleReadNumberInt(argv[i], 1024);
+          break;
         case 't':
           if (++i < argc)
             args->time_divisor = SimpleReadNumberInt(argv[i], 1);
@@ -333,7 +332,8 @@ static int ParseArgs(int argc, char **argv, EmulatorArgs *args) {
   }
 
   if (show_help || args->image_file_name == 0 || args->time_divisor <= 0) {
-    fprintf(stderr,
+    fprintf(
+        stderr,
         "./mini-rv32imaf [parameters]\n"
         "\t-m [ram amount]\n"
         "\t-f [running image]\n"
@@ -341,6 +341,7 @@ static int ParseArgs(int argc, char **argv, EmulatorArgs *args) {
         "\t-b [dtb file, or 'disable']\n"
         "\t-c instruction count\n"
         "\t-s single step with full processor state\n"
+        "\t-i cycles per kernel step (default 1024)\n"
         "\t-t time division base\n"
         "\t-l lock time base to instruction count\n"
         "\t-p disable sleep when wfi\n"
