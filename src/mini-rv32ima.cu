@@ -373,6 +373,8 @@ restart:
 	uint64_t rt;
 	uint64_t lastTime = (fixed_update)?0:(GetTimeMicroseconds()/time_divisor);
 	int instrs_per_flip = single_step?1:1024;
+	uint32_t* ret;
+	cudaMallocManaged((void**)&ret, sizeof(uint32_t));
 	for( rt = 0; rt < instct+1 || instct < 0; rt += instrs_per_flip )
 	{
 		uint64_t * this_ccount = ((uint64_t*)&core->cyclel);
@@ -382,12 +384,6 @@ restart:
 		else
 			elapsedUs = GetTimeMicroseconds()/time_divisor - lastTime;
 		lastTime += elapsedUs;
-
-		// if( single_step )
-		// 	DumpState( core, ram_image);
-
-		uint32_t* ret;
-		cudaMallocManaged((void**)&ret, sizeof(int));
 
 		// Set things up for the next processor step.
 		
