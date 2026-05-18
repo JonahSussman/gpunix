@@ -28,13 +28,15 @@ __device__ void HandleOtherCSRWrite( uint8_t * image, uint16_t csrno, uint32_t v
 __device__ int32_t HandleOtherCSRRead( uint8_t * image, uint16_t csrno );
 static void MiniSleep();
 
-__constant__ int is_kb_hit;
-int is_kb_hit_h;
+struct KeyboardState {
+	int hit;
+	int byte;
+};
+
+KeyboardState* kb_state;
+__device__ KeyboardState* d_kb_state;
 __device__ int IsKBHit();
 static int IsKBHitHost();
-
-__constant__ int kb_byte;
-int kb_byte_h;
 __device__ int ReadKBByte();
 static int ReadKBByteHost();
 
@@ -68,151 +70,14 @@ __global__ void MiniRV32IMAStepKernel(
 	);
 }
 
-// NOTE(JonahSussman): Some things need to be simulated on the host, for example
-// keyboard input stuff. This is extremely ugly. Sorry.
-int32_t HandleHostCode( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs, int count ) {
-	uint32_t new_timer = CSR( timerl ) + elapsedUs;
-	if( new_timer < CSR( timerl ) ) CSR( timerh )++;
-	CSR( timerl ) = new_timer;
-
-	// Handle Timer interrupt.
-	if( ( CSR( timerh ) > CSR( timermatchh ) || ( CSR( timerh ) == CSR( timermatchh ) && CSR( timerl ) > CSR( timermatchl ) ) ) && ( CSR( timermatchh ) || CSR( timermatchl ) ) )
-	{
-		CSR( extraflags ) &= ~4; // Clear WFI
-		CSR( mip ) |= 1<<7; //MTIP of MIP // https://stackoverflow.com/a/61916199/2926815  Fire interrupt.
-	}
-	else
-		CSR( mip ) &= ~(1<<7);
-
-	// If WFI, don't run processor.
-	if( CSR( extraflags ) & 4 )
-		return 1;
-
-	uint32_t trap = 0;
-	uint32_t rval = 0;
-	uint32_t pc = CSR( pc );
-	uint32_t cycle = CSR( cyclel );
-
-	if( ( CSR( mip ) & (1<<7) ) && ( CSR( mie ) & (1<<7) /*mtie*/ ) && ( CSR( mstatus ) & 0x8 /*mie*/) )
-	{
-		// Timer interrupt.
-		trap = 0x80000007;
-		pc -= 4;
-	}
-	else // No timer interrupt?  Execute a bunch of instructions.
-	for( int icount = 0; icount < count; icount++ )
-	{
-		uint32_t ir = 0;
-		rval = 0;
-		cycle++;
-		uint32_t ofs_pc = pc - MINIRV32_RAM_IMAGE_OFFSET;
-
-		if( ofs_pc >= ram_amt_h )
-		{
-			trap = 1 + 1;  // Handle access violation on instruction read.
-			break;
-		}
-		else if( ofs_pc & 3 )
-		{
-			trap = 1 + 0;  //Handle PC-misaligned access
-			break;
-		}
-		else
-		{
-			ir = MINIRV32_LOAD4( ofs_pc );
-			uint32_t rdid = (ir >> 7) & 0x1f;
-
-			switch( ir & 0x7f )
-			{
-				case 0x03: // Load (0b0000011)
-				{
-					uint32_t rs1 = REG((ir >> 15) & 0x1f);
-					uint32_t imm = ir >> 20;
-					int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
-					uint32_t rsval = rs1 + imm_se;
-
-					rsval -= MINIRV32_RAM_IMAGE_OFFSET;
-					if( rsval >= ram_amt_h-3 )
-					{
-						rsval += MINIRV32_RAM_IMAGE_OFFSET;
-						if( MINIRV32_MMIO_RANGE( rsval ) )  // UART, CLNT
-						{
-							// handle mmio
-
-							auto addy = rsval;
-							if( addy == 0x10000005 ) {
-								is_kb_hit_h = IsKBHitHost();
-								cudaMemcpyToSymbol( is_kb_hit, &is_kb_hit_h, sizeof(is_kb_hit_h) );
-							}
-							else if( addy == 0x10000000 ) {
-								is_kb_hit_h = IsKBHitHost();
-								cudaMemcpyToSymbol( is_kb_hit, &is_kb_hit_h, sizeof(is_kb_hit_h) );
-
-								if (is_kb_hit_h) {
-									kb_byte_h = ReadKBByteHost();
-									cudaMemcpyToSymbol( kb_byte, &kb_byte_h, sizeof(kb_byte_h) );
-								}
-							}
-						}
-					}
-				}
-				case 0x73: // Zifencei+Zicsr  (0b1110011)
-				{
-					uint32_t csrno = ir >> 20;
-					uint32_t microop = ( ir >> 12 ) & 0x7;
-					if( (microop & 3) ) // It's a Zicsr function.
-					{
-						int rs1imm = (ir >> 15) & 0x1f;
-						uint32_t rs1 = REG(rs1imm);
-						uint32_t writeval = rs1;
-
-						// https://raw.githubusercontent.com/riscv/virtual-memory/main/specs/663-Svpbmt.pdf
-						// Generally, support for Zicsr
-						switch( csrno )
-						{
-						case 0x340: rval = CSR( mscratch ); break;
-						case 0x305: rval = CSR( mtvec ); break;
-						case 0x304: rval = CSR( mie ); break;
-						case 0xC00: rval = cycle; break;
-						case 0x344: rval = CSR( mip ); break;
-						case 0x341: rval = CSR( mepc ); break;
-						case 0x300: rval = CSR( mstatus ); break; //mstatus
-						case 0x342: rval = CSR( mcause ); break;
-						case 0x343: rval = CSR( mtval ); break;
-						case 0xf11: rval = 0xff0ff0ff; break; //mvendorid
-						case 0x301: rval = 0x40401101; break; //misa (XLEN=32, IMA+X)
-						//case 0x3B0: rval = 0; break; //pmpaddr0
-						//case 0x3a0: rval = 0; break; //pmpcfg0
-						//case 0xf12: rval = 0x00000000; break; //marchid
-						//case 0xf13: rval = 0x00000000; break; //mimpid
-						//case 0xf14: rval = 0x00000000; break; //mhartid
-						default:
-							// MINIRV32_OTHERCSR_READ( csrno, rval );
-							if( csrno == 0x140 )
-							{
-								is_kb_hit_h = IsKBHitHost();
-								cudaMemcpyToSymbol( is_kb_hit, &is_kb_hit_h, sizeof(is_kb_hit_h) );
-								if( is_kb_hit_h )
-								{
-									kb_byte_h = ReadKBByteHost();
-									cudaMemcpyToSymbol( kb_byte, &kb_byte_h, sizeof(kb_byte_h) );
-								}
-							}
-							break;
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return 0;
-}
-
 int main( int argc, char ** argv )
 {	
 	cudaMemcpyToSymbol( ram_amt, &ram_amt_h, sizeof(ram_amt_h) );
 	cudaMemcpyToSymbol( fail_on_all_faults, &fail_on_all_faults_h, sizeof(fail_on_all_faults_h) );
+	cudaMallocManaged((void**)&kb_state, sizeof(KeyboardState));
+	kb_state->hit = 0;
+	kb_state->byte = 0;
+	cudaMemcpyToSymbol( d_kb_state, &kb_state, sizeof(KeyboardState*) );
 
 	int i;
 	long long instct = -1;
@@ -373,6 +238,8 @@ restart:
 	uint64_t rt;
 	uint64_t lastTime = (fixed_update)?0:(GetTimeMicroseconds()/time_divisor);
 	int instrs_per_flip = single_step?1:1024;
+	uint32_t* ret;
+	cudaMallocManaged((void**)&ret, sizeof(uint32_t));
 	for( rt = 0; rt < instct+1 || instct < 0; rt += instrs_per_flip )
 	{
 		uint64_t * this_ccount = ((uint64_t*)&core->cyclel);
@@ -383,24 +250,14 @@ restart:
 			elapsedUs = GetTimeMicroseconds()/time_divisor - lastTime;
 		lastTime += elapsedUs;
 
-		// if( single_step )
-		// 	DumpState( core, ram_image);
-
-		uint32_t* ret;
-		cudaMallocManaged((void**)&ret, sizeof(int));
-
-		// Set things up for the next processor step.
-		
-		// TODO(JonahSussman): Only do the keyboard check if needed.
-		// is_kb_hit_h = IsKBHitHost();
-		// cudaMemcpyToSymbol( is_kb_hit, &is_kb_hit_h, sizeof(is_kb_hit_h) );
-		
-		MiniRV32IMAState* state = (MiniRV32IMAState*)malloc(sizeof(MiniRV32IMAState));
-		for (int i = 0; i < sizeof(MiniRV32IMAState); ++i) {
-			((uint8_t*)state)[i] = ((uint8_t*)core)[i];
+		if( !kb_state->hit )
+		{
+			kb_state->hit = IsKBHitHost();
+			if( kb_state->hit )
+			{
+				kb_state->byte = ReadKBByteHost();
+			}
 		}
-		HandleHostCode(state, ram_image, 0, elapsedUs, instrs_per_flip);
-		free(state);
 
 		MiniRV32IMAStepKernel<<<1, 1>>>(
 			ret, core, ram_image, 0, elapsedUs, instrs_per_flip
@@ -557,7 +414,8 @@ static uint64_t GetTimeMicroseconds()
 static int is_eofd;
 
 __device__ int ReadKBByte() {
-	return kb_byte;
+	d_kb_state->hit = 0;
+	return d_kb_state->byte;
 }
 
 static int ReadKBByteHost()
@@ -573,7 +431,7 @@ static int ReadKBByteHost()
 }
 
 __device__ int IsKBHit() {
-	return is_kb_hit;
+	return d_kb_state->hit;
 }
 
 static int IsKBHitHost()
@@ -608,7 +466,6 @@ __device__ uint32_t HandleControlStore( MiniRV32IMAState* core, uint32_t addy, u
 	if( addy == 0x10000000 ) //UART 8250 / 16550 Data Buffer
 	{
 		printf( "%c", val );
-		// fflush( stdout );
 	}
 	else if( addy == 0x11004004 ) //CLNT
 		core->timermatchh = val;
