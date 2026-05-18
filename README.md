@@ -29,7 +29,7 @@ Tested on a GTX 1060, CUDA compute capability 6.1 (`sm_61`).
 
 To get started with `gpunix`, follow these steps:
 
-1. Clone the repository: `git clone https://github.com/your-username/gpunix.git`
+1. Clone the repository: `git clone https://github.com/JonahSussman/gpunix.git`
 2. Install the necessary CUDA runtime and drivers. [Here](https://rpmfusion.org/Howto/CUDA) is a good guide for Fedora.
 3. Build: `make cuda-rv32ima`
 4. Launch: `./bin/cuda-rv32ima -f assets/DownloadedImage`
@@ -37,7 +37,7 @@ To get started with `gpunix`, follow these steps:
 
 ## TODO
 
-- [ ] Fix up keyboard input
+- [x] Fix up keyboard input
 - [ ] Write up a blog post about the project
 
 ## License
